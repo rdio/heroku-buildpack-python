@@ -2,17 +2,21 @@
 
 source $BIN_DIR/utils
 
+set -eo pipefail
+
 # Install dependencies with Pip.
 puts-step "Installing dependencies with pip"
+
+declare -A PKG_CONFIG_ROOT=( [false]=$BUILD_DIR [true]=/app )
 
 [ ! "$FRESH_PYTHON" ] && bpwatch start pip_install
 [ "$FRESH_PYTHON" ] && bpwatch start pip_install_first
 
-/app/.heroku/python/bin/pip install -r requirements.txt --exists-action=w --src=./.heroku/src --allow-all-external  | cleanup | indent
+${PKG_CONFIG_ROOT[$IN_ANVIL]}/.heroku/python/bin/pip install -r requirements.txt --exists-action=w --src=./.heroku/src --allow-all-external  | cleanup | indent
 
 # Smart Requirements handling
 cp requirements.txt .heroku/python/requirements-declared.txt
-/app/.heroku/python/bin/pip freeze > .heroku/python/requirements-installed.txt
+${PKG_CONFIG_ROOT[$IN_ANVIL]}/.heroku/python/bin/pip freeze > .heroku/python/requirements-installed.txt
 
 [ ! "$FRESH_PYTHON" ] && bpwatch stop pip_install
 [ "$FRESH_PYTHON" ] && bpwatch stop pip_install_first

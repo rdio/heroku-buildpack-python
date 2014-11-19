@@ -1,6 +1,8 @@
 # Install Mercurial if it appears to be required.
+declare -A PKG_CONFIG_ROOT=( [false]=$BUILD_DIR [true]=/app )
+
 if (grep -Fiq "hg+" requirements.txt) then
   bpwatch start mercurial_install
-    /app/.heroku/python/bin/pip install  mercurial | cleanup | indent
+    ${PKG_CONFIG_ROOT[$IN_ANVIL]}/.heroku/python/bin/pip install  mercurial | cleanup | indent
   bpwatch stop mercurial_install
 fi

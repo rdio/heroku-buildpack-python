@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+
+source $BIN_DIR/utils
+
+TOPD="$BUILD_DIR"
+
+puts-step "Making shell scripts relative..."
+
+(
+ashebang="#!${TOPD}"
+new_shebang='#!/usr/bin/env'
+while IFS= read -r -d '' s; do
+    echo $s | indent
+    #set -x
+    exec 8<"$s" || (echo "err: $?"; exit 1)
+    shebang=''
+    read -r -u 8 shebang || ( err=$?; [[ $err -eq 1 ]] || (echo "err: $?"; exit 1)) # catch oneliner
+    if [[ "${shebang:0:2}" != "#!" ]]; then
+        #set +x
+        exec 8<&-
+        continue
+    fi
+    if echo "`dirname ${shebang:2}`" | grep -qF "${ashebang:2}"; then
+        #set +x
+        nshebang="$(basename ${shebang:2})"
+        exec 9>"$s.$$"
+        echo $new_shebang $nshebang >&9
+        cat <&8 >&9
+        exec 8<&-
+        exec 9>&-
+        chmod --reference="$s" "$s.$$"
+        mv "$s.$$" "$s"
+    else
+        #set +x
+        exec 8<&-
+    fi
+done< <(find . -type f -perm /111 -print0)
+)

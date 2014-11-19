@@ -12,7 +12,10 @@
 # The location of the pre-compiled cryptography binary.
 VENDORED_LIBFFI="https://lang-python.s3.amazonaws.com/$STACK/libraries/vendor/libffi.tar.gz"
 
-PKG_CONFIG_PATH="/app/.heroku/vendor/lib/pkgconfig:$PKG_CONFIG_PATH"
+
+declare -A PKG_CONFIG_ROOT=( [false]=$BUILD_DIR [true]=/app )
+
+PKG_CONFIG_PATH="${PKG_CONFIG_ROOT[$IN_ANVIL]}/.heroku/vendor/lib/pkgconfig:$PKG_CONFIG_PATH"
 
 # Syntax sugar.
 source $BIN_DIR/utils

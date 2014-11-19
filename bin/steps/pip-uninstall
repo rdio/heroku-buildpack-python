@@ -1,6 +1,9 @@
 set +e
 # Install dependencies with Pip.
 bpwatch start pip_uninstall
+
+declare -A PKG_CONFIG_ROOT=( [false]=$BUILD_DIR [true]=/app )
+
 if [[ -f .heroku/python/requirements-declared.txt ]]; then
 
   cp .heroku/python/requirements-declared.txt requirements-declared.txt
@@ -11,7 +14,7 @@ if [[ -f .heroku/python/requirements-declared.txt ]]; then
 
   if [[ -s .heroku/python/requirements-stale.txt ]]; then
     puts-step "Uninstalling stale dependencies"
-    /app/.heroku/python/bin/pip uninstall -r .heroku/python/requirements-stale.txt -y --exists-action=w | cleanup | indent
+    ${PKG_CONFIG_ROOT[$IN_ANVIL]}/.heroku/python/bin/pip uninstall -r .heroku/python/requirements-stale.txt -y --exists-action=w | cleanup | indent
   fi
 fi
 bpwatch stop pip_uninstall

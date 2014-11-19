@@ -28,7 +28,7 @@ WEBCONCURRENCY_PROFILE_PATH="$BUILD_DIR/.profile.d/python.webconcurrency.sh"
 
 DEFAULT_PYTHON_VERSION="python-2.7.9"
 DEFAULT_PYTHON_STACK="cedar"
-PYTHON_EXE="/app/.heroku/python/bin/python"
+#PYTHON_EXE="$HOME/.heroku/python/bin/python" # not used?
 PIP_VERSION="6.0.6"
 SETUPTOOLS_VERSION="11.3.1"
 
@@ -47,7 +47,7 @@ export PATH=$PATH:$ROOT_DIR/vendor/pip-pop
 [ ! "$STACK" ] && STACK=$DEFAULT_PYTHON_STACK
 
 # Sanitizing environment variables.
-unset GIT_DIR PYTHONHOME PYTHONPATH LD_LIBRARY_PATH LIBRARY_PATH
+unset GIT_DIR PYTHONHOME PYTHONPATH
 
 bpwatch init $LOGPLEX_KEY
 bpwatch build python $BUILDPACK_VERSION $REQUEST_ID
@@ -62,38 +62,51 @@ export BUILD_DIR CACHE_DIR BIN_DIR PROFILE_PATH
 # Syntax sugar.
 source $BIN_DIR/utils
 
+IN_ANVIL=false
+
 # Directory Hacks for path consistiency.
 APP_DIR='/app'
-TMP_APP_DIR=$CACHE_DIR/tmp_app_dir
+if [[ -d $APP_DIR && -w $APP_DIR ]]; then # see if we're really inside anvil.
+    IN_ANVIL=true
+    TMP_APP_DIR=$CACHE_DIR/tmp_app_dir
 
-# Copy Anvil app dir to temporary storage...
-bpwatch start anvil_appdir_stage
-  if [ "$SLUG_ID" ]; then
-    mkdir -p $TMP_APP_DIR
-    deep-mv $APP_DIR $TMP_APP_DIR
-  else
-    deep-rm $APP_DIR
-  fi
-bpwatch stop anvil_appdir_stage
+    # Copy Anvil app dir to temporary storage...
+    bpwatch start anvil_appdir_stage
+      if [ "$SLUG_ID" ]; then
+        mkdir -p $TMP_APP_DIR
+        deep-mv $APP_DIR $TMP_APP_DIR
+      else
+        deep-rm $APP_DIR
+      fi
+    bpwatch stop anvil_appdir_stage
 
-# Copy Application code in.
-bpwatch start appdir_stage
-  deep-mv $BUILD_DIR $APP_DIR
-bpwatch stop appdir_stage
+    # Copy Application code in.
+    bpwatch start appdir_stage
+    deep-mv $BUILD_DIR $APP_DIR
+    bpwatch stop appdir_stage
 
-# Set new context.
-ORIG_BUILD_DIR=$BUILD_DIR
-BUILD_DIR=$APP_DIR
+    # Set new context.
+    ORIG_BUILD_DIR=$BUILD_DIR
+    BUILD_DIR=$APP_DIR
+    for v in C_INCLUDE_PATH CPLUS_INCLUDE_PATH LIBRARY_PATH LD_LIBRARY_PATH PKG_CONFIG_PATH CPATH; do
+        declare -x $v="$(echo ${!v} | sed -e s\#$ORIG_BUILD_DIR\#$BUILD_DIR\#g)"
+    done
+fi
+
+export IN_ANVIL
 
 # Prepend proper path buildpack use.
 export PATH=$BUILD_DIR/.heroku/python/bin:$BUILD_DIR/.heroku/vendor/bin:$PATH
 export PYTHONUNBUFFERED=1
 export LANG=en_US.UTF-8
-export C_INCLUDE_PATH=/app/.heroku/vendor/include:$BUILD_DIR/.heroku/vendor/include:/app/.heroku/python/include
-export CPLUS_INCLUDE_PATH=/app/.heroku/vendor/include:$BUILD_DIR/.heroku/vendor/include:/app/.heroku/python/include
-export LIBRARY_PATH=/app/.heroku/vendor/lib:$BUILD_DIR/.heroku/vendor/lib:/app/.heroku/python/lib
-export LD_LIBRARY_PATH=/app/.heroku/vendor/lib:$BUILD_DIR/.heroku/vendor/lib:/app/.heroku/python/lib
-export PKG_CONFIG_PATH=/app/.heroku/vendor/lib/pkg-config:$BUILD_DIR/.heroku/vendor/lib/pkg-config:/app/.heroku/python/lib/pkg-config
+export C_INCLUDE_PATH=$APP_DIR/.heroku/vendor/include:$BUILD_DIR/.heroku/vendor/include:$APP_DIR/.heroku/python/include${C_INCLUDE_PATH:+:$C_INCLUDE_PATH}
+export CPLUS_INCLUDE_PATH=$APP_DIR/.heroku/vendor/include:$BUILD_DIR/.heroku/vendor/include:$APP_DIR/.heroku/python/include${CPLUS_INCLUDE_PATH:+:$CPLUS_INCLUDE_PATH}
+export LIBRARY_PATH=$APP_DIR/.heroku/vendor/lib:$BUILD_DIR/.heroku/vendor/lib:$APP_DIR/.heroku/python/lib${LIBRARY_PATH:+:$LIBRARY_PATH}
+export LD_LIBRARY_PATH=$APP_DIR/.heroku/vendor/lib:$BUILD_DIR/.heroku/vendor/lib:$APP_DIR/.heroku/python/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}
+export PKG_CONFIG_PATH=$APP_DIR/.heroku/vendor/lib/pkg-config:$BUILD_DIR/.heroku/vendor/lib/pkg-config:$APP_DIR/.heroku/python/lib/pkg-config${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}
+
+# we dont touch cpath ourself, but if it comes in, lets make sure we export it.
+export CPATH
 
 # Switch to the repo's context.
 cd $BUILD_DIR
@@ -172,6 +185,11 @@ sub-env $BIN_DIR/steps/pip-install
 # Django collectstatic support.
 sub-env $BIN_DIR/steps/collectstatic
 
+if [ "$IN_ANVIL" = "false" ]; then
+    # Clean shebangs
+    source $BIN_DIR/steps/cleanshebangs
+fi
+
 
 # ### Finalize
 #
@@ -179,12 +197,12 @@ sub-env $BIN_DIR/steps/collectstatic
 # Set context environment variables.
 set-env PATH '$HOME/.heroku/python/bin:$PATH'
 set-env PYTHONUNBUFFERED true
-set-env PYTHONHOME /app/.heroku/python
-set-env LIBRARY_PATH /app/.heroku/vendor/lib:/app/.heroku/python/lib
-set-env LD_LIBRARY_PATH '/app/.heroku/vendor/lib:/app/.heroku/python/lib:$LD_LIBRARY_PATH'
+set-env PYTHONHOME '$HOME/.heroku/python'
+set-env LIBRARY_PATH '$HOME/.heroku/vendor/lib:$HOME/.heroku/python/lib${LIBRARY_PATH:+:$LIBRARY_PATH}'
+set-env LD_LIBRARY_PATH '$HOME/.heroku/vendor/lib:$HOME/.heroku/python/lib:${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}'
 set-default-env LANG en_US.UTF-8
 set-default-env PYTHONHASHSEED random
-set-default-env PYTHONPATH /app/
+set-default-env PYTHONPATH '$HOME'
 
 # Install sane-default script for WEB_CONCURRENCY environment variable.
 cp $ROOT_DIR/vendor/python.webconcurrency.sh $WEBCONCURRENCY_PROFILE_PATH
@@ -204,14 +222,16 @@ bpwatch start dump_cache
 bpwatch stop dump_cache
 
 # ### Fin.
-bpwatch start appdir_commit
-  deep-mv $BUILD_DIR $ORIG_BUILD_DIR
-bpwatch stop appdir_commit
+if $IN_ANVIL; then
+    bpwatch start appdir_commit
+      deep-mv $BUILD_DIR $ORIG_BUILD_DIR
+    bpwatch stop appdir_commit
 
-bpwatch start anvil_appdir_commit
-  if [ "$SLUG_ID" ]; then
-    deep-mv $TMP_APP_DIR $APP_DIR
-  fi
+    bpwatch start anvil_appdir_commit
+      if [ "$SLUG_ID" ]; then
+        deep-mv $TMP_APP_DIR $APP_DIR
+      fi
 
-bpwatch stop anvil_appdir_commit
+    bpwatch stop anvil_appdir_commit
+fi
 bpwatch stop compile
